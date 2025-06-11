@@ -14,6 +14,9 @@ importers:
       '@clerk/react-router':
         specifier: ^1.5.0
         version: 1.5.0(react-dom@19.1.0(react@19.1.0))(react-router@7.6.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)
+      '@clerk/themes':
+        specifier: ^2.2.49
+        version: 2.2.49
       '@hookform/resolvers':
         specifier: ^5.1.0
         version: 5.1.0(react-hook-form@7.57.0(react@19.1.0))
@@ -350,6 +353,10 @@ packages:
         optional: true
       react-dom:
         optional: true
+
+  '@clerk/themes@2.2.49':
+    resolution: {integrity: sha512-bwiBE/H/LtYpQL13GXjw1XzA8Vi4KwXiDbDRQCGPuLwFz2PtPLr4uFSGfNP8qLGFrM2hs7UeAPS+7CDlVUOaAA==}
+    engines: {node: '>=18.17.0'}
 
   '@clerk/types@4.60.0':
     resolution: {integrity: sha512-60u/Z3VD0lgepsySUPyFM1MV5cwhMwouN63na5g9+qm3PpaTE2kN4DeW9Nq6t1YB0TFpVEKIb1r8U6EOWPa01A==}
@@ -2762,6 +2769,11 @@ snapshots:
     optionalDependencies:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  '@clerk/themes@2.2.49':
+    dependencies:
+      '@clerk/types': 4.60.0
+      tslib: 2.8.1
 
   '@clerk/types@4.60.0':
     dependencies:
