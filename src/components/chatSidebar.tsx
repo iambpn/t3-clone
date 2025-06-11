@@ -107,9 +107,7 @@ export default function ChatSidebar() {
                         </AvatarFallback>
                       </Avatar>
                       <div className='flex flex-col items-start flex-1'>
-                        <span className='font-medium'>
-                          {user?.firstName} {user?.lastName}
-                        </span>
+                        <span className='font-medium'>{user?.fullName}</span>
                         <span className='text-xs text-muted-foreground'>{user?.emailAddresses[0].emailAddress}</span>
                       </div>
                       <ChevronDown className='w-4 h-4' />

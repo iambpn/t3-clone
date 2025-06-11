@@ -3,7 +3,6 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import "./App.css";
 import { ThemeProvider } from "./components/theme-provider";
 import RootLayout from "./layouts/RootLayout";
-import Home from "./pages/Home";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -17,12 +16,6 @@ const router = createBrowserRouter([
         </ThemeProvider>
       </ClerkProvider>
     ),
-    children: [
-      {
-        index: true,
-        element: <Home />,
-      },
-    ],
   },
 ]);
 

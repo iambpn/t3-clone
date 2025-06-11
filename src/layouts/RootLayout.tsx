@@ -3,13 +3,14 @@ import { LoadingProgress } from "@/components/loadingProgress";
 import MessageContainer from "@/components/messageContainer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SIDEBAR_COOKIE_NAME, SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import WelcomeMessage from "@/components/WelcomeMessage";
 import { useAuth, useClerk, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
 import { Bot } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export default function ChatApp() {
+export default function RootLayout() {
   const { isLoaded } = useAuth();
   const { user } = useUser();
   const clerk = useClerk();
@@ -51,13 +52,21 @@ export default function ChatApp() {
             </div>
             <div className='px-4'>
               {user && (
-                <Avatar className='w-8 h-8'>
-                  <AvatarImage src={user?.imageUrl} />
-                  <AvatarFallback className='bg-gradient-to-r from-blue-500 to-purple-600 text-white'>
-                    {user?.firstName?.charAt(0) || "U"}
-                    {user?.lastName?.charAt(0) || ""}
-                  </AvatarFallback>
-                </Avatar>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Avatar className='w-8 h-8'>
+                      <AvatarImage src={user?.imageUrl} />
+                      <AvatarFallback className='bg-gradient-to-r from-blue-500 to-purple-600 text-white'>
+                        {user?.firstName?.charAt(0) || "U"}
+                        {user?.lastName?.charAt(0) || ""}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className='font-medium text-sm'>{user.fullName}</p>
+                    <p className='text-xs text-gray-700'>{user.emailAddresses[0].emailAddress}</p>
+                  </TooltipContent>
+                </Tooltip>
               )}
               {!user && (
                 <div
