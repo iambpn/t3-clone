@@ -14,10 +14,18 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { AppConstants } from "@/constants/app.constant";
+import { timestampToRelativeDate } from "@/lib/date";
+import { parseError, safeExec } from "@/lib/error";
+import type { ParamsType } from "@/types/params.type";
 import { SignedIn, SignedOut, SignInButton, useAuth, UserProfile, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
+import { useQuery } from "convex/react";
 import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings } from "lucide-react";
 import { useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
+import { api } from "../../convex/_generated/api";
+import { LoadingSpinner } from "./loadingSpinner";
 import { Modal } from "./modal";
 import {
   DropdownMenu,
@@ -27,18 +35,29 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-const previousChats = [
-  { id: "1", title: "React Best Practices", lastMessage: "Thanks for the help!", timestamp: "2 hours ago" },
-  { id: "2", title: "TypeScript Questions", lastMessage: "How do I type this?", timestamp: "1 day ago" },
-  { id: "3", title: "Next.js Deployment", lastMessage: "Deployment successful!", timestamp: "3 days ago" },
-  { id: "4", title: "Database Design", lastMessage: "What about normalization?", timestamp: "1 week ago" },
-  { id: "5", title: "API Integration", lastMessage: "Perfect, that works!", timestamp: "2 weeks ago" },
-];
-
 export default function ChatSidebar() {
   const { user, isSignedIn } = useUser();
   const { signOut } = useAuth();
   const [openSetting, setOpenSetting] = useState(false);
+  const navigate = useNavigate();
+  const params = useParams<ParamsType>();
+
+  const conversations = safeExec(
+    () => useQuery(api.chat.getConversations),
+    (error) => {
+      const errorMessage = parseError(error);
+      toast.error(errorMessage);
+    }
+  );
+
+  const onConversationSelect = (conversationId: string | null) => {
+    if (!conversationId) {
+      navigate("/");
+      return;
+    }
+
+    navigate(`/${conversationId}`);
+  };
 
   return (
     <>
@@ -58,7 +77,10 @@ export default function ChatSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
 
-          <Button className='mx-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'>
+          <Button
+            className='mx-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'
+            onClick={() => onConversationSelect(null)}
+          >
             <Plus className='w-4 h-4 mr-2' />
             New Chat
           </Button>
@@ -69,17 +91,36 @@ export default function ChatSidebar() {
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {previousChats.map((chat) => (
-                  <SidebarMenuItem key={chat.id}>
-                    <SidebarMenuButton className='flex flex-col items-start h-auto py-2 gap-0.5'>
-                      <div className='flex items-center gap-2 w-full'>
-                        <MessageSquare className='w-4 h-4 text-muted-foreground' />
-                        <span className='font-medium truncate flex-1'>{chat.title}</span>
-                      </div>
-                      <div className='text-xs text-muted-foreground ml-6'>{chat.timestamp}</div>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {conversations &&
+                  conversations.length > 0 &&
+                  conversations.map((chat) => (
+                    <SidebarMenuItem key={chat._id}>
+                      <SidebarMenuButton
+                        className='flex flex-col items-start h-auto py-2 gap-0.5'
+                        isActive={chat._id === params.conversationId}
+                        onClick={() => onConversationSelect(chat._id)}
+                      >
+                        <div className='flex items-center gap-2 w-full'>
+                          <MessageSquare className='w-4 h-4 text-muted-foreground' />
+                          <span className='font-medium truncate flex-1'>{chat.title}</span>
+                        </div>
+                        <div className='text-xs text-muted-foreground ml-6'>
+                          {timestampToRelativeDate(chat.updatedAt)}
+                        </div>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+
+                {conversations && conversations.length === 0 && (
+                  <div className='flex items-center justify-center h-8 text-muted-foreground'>
+                    No conversations found
+                  </div>
+                )}
+                {!conversations && (
+                  <div className='flex items-center justify-center h-8'>
+                    <LoadingSpinner className='w-6! h-6!' />
+                  </div>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
