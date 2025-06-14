@@ -14,8 +14,9 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as chat from "../chat.js";
-import type * as deepseekClient from "../deepseekClient.js";
+import type * as constants_systemPrompt from "../constants/systemPrompt.js";
 import type * as model from "../model.js";
+import type * as providers_DeepSeek from "../providers/DeepSeek.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -27,8 +28,9 @@ import type * as model from "../model.js";
  */
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
-  deepseekClient: typeof deepseekClient;
+  "constants/systemPrompt": typeof constants_systemPrompt;
   model: typeof model;
+  "providers/DeepSeek": typeof providers_DeepSeek;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

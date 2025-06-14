@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { generateChatResponse } from "./providers/DeepSeek";
 
 export const getConversations = query({
   args: {},
@@ -55,11 +56,10 @@ export const sendMessage = mutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
+    modelId: v.id("models"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ conversationId: string }> => {
     const { conversationId, content } = args;
-
-    console.log(args);
 
     const user = await ctx.auth.getUserIdentity();
     if (!user) {
@@ -71,6 +71,7 @@ export const sendMessage = mutation({
     }
 
     let conversation: DataModel["conversations"]["document"] | null = null;
+    let isNewConversation = false;
     if (conversationId) {
       conversation = await ctx.db
         .query("conversations")
@@ -83,6 +84,7 @@ export const sendMessage = mutation({
       });
 
       conversation = await ctx.db.get(newConversationId);
+      isNewConversation = true;
     }
 
     if (!conversation) {
@@ -94,6 +96,33 @@ export const sendMessage = mutation({
       role: "user",
       content,
     });
+
+    const model = await ctx.runQuery(internal.chat.getModelById, {
+      modelId: args.modelId,
+    });
+
+    const messages = await ctx.runQuery(internal.chat.getMessagesForChat, {
+      conversationId: conversation._id,
+      lastN: 50,
+    });
+
+    // call the assistant api
+    await ctx.scheduler.runAfter(0, internal.chat.askAssistant, {
+      conversationId: conversation._id,
+      modelId: model.modelId,
+      userId: user.subject,
+      messages,
+    });
+
+    if (isNewConversation) {
+      // Set the title of the new conversation based on the first message
+      await ctx.scheduler.runAfter(0, internal.chat.generateTitle, {
+        conversationId: conversation._id,
+        userContent: content,
+      });
+    }
+
+    return { conversationId: conversation._id };
   },
 });
 
@@ -116,5 +145,171 @@ export const createConversation = internalMutation({
     });
 
     return newConversationId;
+  },
+});
+
+export const getModelById = internalQuery({
+  args: {
+    modelId: v.id("models"),
+  },
+  handler: async (ctx, args) => {
+    const { modelId } = args;
+
+    if (!modelId) {
+      throw new ConvexError({ message: "Model ID is required to fetch model details" });
+    }
+
+    const model = await ctx.db
+      .query("models")
+      .filter((q) => q.eq(q.field("_id"), modelId))
+      .first();
+
+    if (!model) {
+      throw new ConvexError({ message: "Model not found" });
+    }
+
+    return {
+      _id: model._id,
+      name: model.name,
+      modelId: model.modelId,
+      capabilities: model.capabilities,
+    };
+  },
+});
+
+export const getMessagesForChat = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    lastN: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId, lastN } = args;
+
+    if (!conversationId) {
+      throw new ConvexError({ message: "Conversation ID is required to fetch messages" });
+    }
+
+    const messages = await ctx.db
+      .query("messages")
+      .filter((q) => q.eq(q.field("conversationId"), conversationId))
+      .order("desc")
+      .take(lastN || 50);
+
+    return messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+  },
+});
+
+export const askAssistant = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    modelId: v.string(),
+    userId: v.string(),
+    messages: v.array(
+      v.object({
+        role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+        content: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId, modelId, userId, messages } = args;
+
+    if (!conversationId || !modelId || !userId || messages.length === 0) {
+      throw new ConvexError({ message: "All fields are required to ask the assistant" });
+    }
+
+    const response = await generateChatResponse(messages, modelId);
+
+    // save the assistant's response
+    await ctx.scheduler.runAfter(0, internal.chat.saveAssistantResponse, {
+      conversationId,
+      role: "assistant",
+      content: response.content,
+      reasoningContent: response.reasoning_content || undefined,
+      errorMessage: response.errorMessage || undefined,
+    });
+  },
+});
+
+export const generateTitle = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    userContent: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId, userContent } = args;
+
+    if (!conversationId || !userContent) {
+      throw new ConvexError({ message: "Conversation ID and content are required" });
+    }
+
+    const response = await generateChatResponse(
+      [
+        { role: "system", content: "Generate a concise title for the conversation based on the user's input. respond with title only do not add any prefixes like 'title:' respond with direct title without event the string double quote and other wrapper." },
+        { role: "user", content: userContent },
+      ],
+      "deepseek-chat"
+    );
+
+    await ctx.scheduler.runAfter(0, internal.chat.setTitle, {
+      conversationId,
+      title: response.content || "New Conversation",
+    });
+  },
+});
+
+export const saveAssistantResponse = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+    content: v.string(),
+    reasoningContent: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId, role, content, reasoningContent, errorMessage } = args;
+
+    if (!conversationId || !role || !content) {
+      throw new ConvexError({ message: "Conversation ID, role, and content are required" });
+    }
+
+    await ctx.db.insert("messages", {
+      conversationId,
+      role,
+      content,
+      reasoningContent,
+      errorMessage,
+    });
+
+    // Update the conversation's updatedAt timestamp
+    await ctx.db.patch(conversationId, {
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const setTitle = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId, title } = args;
+
+    if (!conversationId) {
+      throw new ConvexError({ message: "Conversation ID and title are required" });
+    }
+
+    if (!title) {
+      return;
+    }
+
+    await ctx.db.patch(conversationId, {
+      title,
+      updatedAt: Date.now(),
+    });
   },
 });

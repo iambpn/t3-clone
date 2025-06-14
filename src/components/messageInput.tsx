@@ -9,7 +9,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { Brain, Eye, Loader2, Mic, Paperclip, Send, Smile } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { useShallow } from "zustand/shallow";
 import { api } from "../../convex/_generated/api";
@@ -21,6 +21,7 @@ export function MessageInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { conversationId } = useParams<ParamsType>();
+  const navigate = useNavigate();
 
   const { selectedModel, setSelectedModel } = useModalStore(
     useShallow((state) => ({
@@ -73,16 +74,24 @@ export function MessageInput() {
 
     if (!input.trim()) return;
 
+    if (!selectedModel || !selectedModel._id) {
+      toast.error("Please select a model before sending a message.");
+      return;
+    }
+
     setIsLoading(true);
 
     const message = input.trim();
     setInput("");
 
     try {
-      await sendMessageMutation({
+      const res = await sendMessageMutation({
         conversationId: (conversationId as Id<"conversations">) || undefined,
+        modelId: selectedModel._id,
         content: message,
       });
+
+      navigate(`/${res.conversationId}`);
     } catch (error: unknown) {
       const errorMessage = parseError(error);
       toast.error(errorMessage);

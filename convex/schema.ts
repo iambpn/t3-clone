@@ -1,3 +1,4 @@
+import { error } from "console";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -21,5 +22,8 @@ export default defineSchema({
     conversationId: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
     content: v.string(),
-  }).index("by_conversation_id", ["conversationId"]),
+    reasoningContent: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+  })
+    .index("by_conversation_id", ["conversationId"]),
 });
