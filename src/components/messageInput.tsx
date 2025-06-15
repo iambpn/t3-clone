@@ -13,12 +13,16 @@ import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { useShallow } from "zustand/shallow";
 import { api } from "../../convex/_generated/api";
+import { useAppStore } from "@/store/useAppStore";
 
 export function MessageInput() {
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [isMessageLoading, setIsMessageLoading] = useAppStore(
+    useShallow((state) => [state.isMessageLoading, state.setIsMessageLoading])
+  );
 
   const { conversationId } = useParams<ParamsType>();
   const navigate = useNavigate();
@@ -58,7 +62,7 @@ export function MessageInput() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (input.trim() && !isLoading) {
+      if (input.trim() && !isMessageLoading) {
         handleSubmit(e as any);
       }
     }
@@ -79,8 +83,6 @@ export function MessageInput() {
       return;
     }
 
-    setIsLoading(true);
-
     const message = input.trim();
     setInput("");
 
@@ -92,12 +94,12 @@ export function MessageInput() {
       });
 
       navigate(`/${res.conversationId}`);
+      setIsMessageLoading(true);
     } catch (error: unknown) {
       const errorMessage = parseError(error);
       toast.error(errorMessage);
+      setIsMessageLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   // set the default model
@@ -131,7 +133,7 @@ export function MessageInput() {
               onKeyDown={handleKeyDown}
               placeholder='Type your message...'
               className='min-h-[40px] max-h-[120px] resize-none border-0 bg-transparent p-2 text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent'
-              disabled={isLoading}
+              disabled={isMessageLoading}
               rows={1}
             />
           </div>
@@ -145,11 +147,11 @@ export function MessageInput() {
             </Button>
             <Button
               type='submit'
-              disabled={isLoading || !input.trim()}
+              disabled={isMessageLoading || !input.trim()}
               className='h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 border-0 p-0'
               title='Press Enter to send, Shift+Enter for new line'
             >
-              {isLoading ? <Loader2 className='w-4 h-4 animate-spin' /> : <Send className='w-4 h-4' />}
+              {isMessageLoading ? <Loader2 className='w-4 h-4 animate-spin' /> : <Send className='w-4 h-4' />}
             </Button>
           </div>
         </div>

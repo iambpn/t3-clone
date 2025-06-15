@@ -24,6 +24,7 @@ export default defineSchema({
     content: v.string(),
     reasoningContent: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    completed: v.boolean(),
   })
     .index("by_conversation_id", ["conversationId"]),
 });

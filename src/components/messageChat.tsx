@@ -1,5 +1,11 @@
 import type { api } from "convex/_generated/api";
 import { Card } from "./ui/card";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import "github-markdown-css/github-markdown-dark.css";
+import "highlight.js/styles/github-dark.min.css";
 
 type Props = {
   message: (typeof api.chat.getConversationMessages._returnType)[number];
@@ -21,7 +27,32 @@ export function MessageChat({ message }: Props) {
 
       {message.role === "assistant" && (
         <div className='w-full prose prose-sm dark:prose-invert py-5'>
-          <p className={`m-0 leading-relaxed text-foreground`}>{message.content}</p>
+          <p className={`m-0 leading-relaxed text-foreground markdown-body bg-transparent!`}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw, rehypeHighlight]}
+              components={{
+                pre: ({ node, ...props }) => (
+                  <pre {...props} className='p-1! mt-2!'>
+                    {props.children}
+                  </pre>
+                ),
+                hr: ({ node, ...props }) => <hr {...props} className='h-0.5!' />,
+                ul: ({ node, ...props }) => (
+                  <ul {...props} className='list-disc'>
+                    {props.children}
+                  </ul>
+                ),
+                ol: ({ node, ...props }) => (
+                  <ol {...props} className='list-decimal'>
+                    {props.children}
+                  </ol>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </p>
         </div>
       )}
     </div>

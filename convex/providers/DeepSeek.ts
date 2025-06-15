@@ -12,64 +12,69 @@ type PromptMessages = {
   content: string;
 };
 
-export async function generateChatResponse(messages: PromptMessages[], modelId: string) {
+export async function* generateChatResponse(messages: PromptMessages[], modelId: string) {
   try {
     const response = await deepseekClient.chat.completions.create({
       model: modelId,
       reasoning_effort: "medium",
       messages: [SystemPrompt, ...messages],
-      max_completion_tokens: 10000,
-      temperature: 0.7,
+      max_completion_tokens: 25000,
+      temperature: 0.5,
+      stream: true,
     });
-
-    const finishedReason = response.choices[0]?.finish_reason;
-
-    const reasoning_content = (response.choices[0].message as any).reasoning_content || null;
 
     let content = "";
     let errorMessage = "";
+    let reasoning_content = "";
 
-    switch (finishedReason) {
-      case "stop":
-        {
-          content = response.choices[0]?.message?.content || "";
-        }
-        break;
-      case "length":
-        {
-          console.warn("Response truncated due to length limit.");
-          content = response.choices[0]?.message?.content || "";
-        }
-        break;
-      case "content_filter":
-        {
-          console.warn("Response filtered due to content policy violations.");
-          errorMessage = "Sorry, I cannot provide a response that violates content policies.";
-        }
-        break;
-      case "tool_calls":
-        {
-          console.warn("Response included tool calls, which are not supported in this context.");
-          errorMessage = "Sorry, I cannot provide a response that includes tool calls.";
-        }
-        break;
-      case "insufficient_system_resource" as any:
-        {
-          console.warn("Insufficient system resources to complete the request.");
-          errorMessage = "Sorry, I cannot process your request at this time due to system resource limitations.";
-        }
-        break;
-      default:
-        console.warn("Unknown finish reason:", finishedReason);
-        content = response.choices[0]?.message?.content || "";
+    for await (const chunk of response) {
+      const finishedReason = chunk.choices[0]?.finish_reason;
+
+      reasoning_content = (chunk.choices[0].delta as any).reasoning_content || null;
+
+      switch (finishedReason) {
+        case "stop":
+        case null:
+          {
+            content += chunk.choices[0]?.delta?.content || "";
+          }
+          break;
+        case "length":
+          {
+            console.warn("Response truncated due to length limit.");
+            content += chunk.choices[0]?.delta?.content || "";
+          }
+          break;
+        case "content_filter":
+          {
+            console.warn("Response filtered due to content policy violations.");
+            errorMessage = "Sorry, I cannot provide a response that violates content policies.";
+          }
+          break;
+        case "tool_calls":
+          {
+            console.warn("Response included tool calls, which are not supported in this context.");
+            errorMessage = "Sorry, I cannot provide a response that includes tool calls.";
+          }
+          break;
+        case "insufficient_system_resource" as any:
+          {
+            console.warn("Insufficient system resources to complete the request.");
+            errorMessage = "Sorry, I cannot process your request at this time due to system resource limitations.";
+          }
+          break;
+        default:
+          console.warn("Unknown finish reason:", finishedReason);
+          content += chunk.choices[0]?.delta?.content || "";
+      }
+
+      yield {
+        content,
+        errorMessage,
+        finishedReason,
+        reasoning_content,
+      };
     }
-
-    return {
-      content,
-      errorMessage,
-      finishedReason,
-      reasoning_content,
-    };
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
       switch (error.code) {

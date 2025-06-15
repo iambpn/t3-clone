@@ -12,12 +12,16 @@ import { MessageInput } from "./messageInput";
 import { useSidebar } from "./ui/sidebar";
 import { parseError, safeExec } from "@/lib/error";
 import { toast } from "sonner";
+import { useAppStore } from "@/store/useAppStore";
 
 type Props = {};
 
 export default function MessageContainer({}: Props) {
   const { open } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const isAssistantMessageLoading = useAppStore((state) => state.isMessageLoading);
+  const setAssistantMessageLoading = useAppStore((state) => state.setIsMessageLoading);
 
   const { conversationId } = useParams<ParamsType>();
   const navigate = useNavigate();
@@ -39,18 +43,26 @@ export default function MessageContainer({}: Props) {
     }
   );
 
+  const chatWidth = open ? "md:w-[100%] lg:w-[70%]" : "md:w-[100%] lg:w-[60%]";
+  const lastMessage = messages?.[messages.length - 1];
+  const isAssistantSteaming = lastMessage?.role === "assistant" && !lastMessage.isCompleted;
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const chatWidth = open ? "md:w-[100%] lg:w-[70%]" : "md:w-[100%] lg:w-[60%]";
+  useEffect(() => {
+    if (lastMessage && lastMessage.role === "assistant" && lastMessage.isCompleted) {
+      setAssistantMessageLoading(false);
+    }
+  }, [lastMessage]);
 
   return (
     <div className='flex flex-col flex-1 w-full items-center'>
       {/* Messages Container */}
       <div className={cn("h-full overflow-hidden transition-[width] duration-300 w-full", chatWidth)}>
         <div className='h-full px-4 py-1'>
-          <div className='h-full overflow-y-auto'>
+          <div className='h-full overflow-y-hidden'>
             {!conversationId && <WelcomeMessage showDescription={true} />}
 
             {conversationId && !messages && (
@@ -62,6 +74,14 @@ export default function MessageContainer({}: Props) {
             {conversationId &&
               messages &&
               messages.map((message) => <MessageChat key={message._id} message={message} />)}
+
+            {conversationId && isAssistantMessageLoading && !isAssistantSteaming && (
+              <div className='flex items-center justify-start'>
+                <LoadingSpinner className='w-5! h-5!' />
+              </div>
+            )}
+
+            {/* Scroll to bottom */}
             <div ref={messagesEndRef} />
           </div>
         </div>
