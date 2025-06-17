@@ -1,3 +1,3 @@
 export const AppConstants = {
-  APP_NAME: "Chat App", // T3 Clone
+  APP_NAME: "T3 Chat Clone", // T3 Clone
 };

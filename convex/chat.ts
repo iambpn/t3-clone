@@ -156,6 +156,32 @@ export const sendMessage = mutation({
   },
 });
 
+export const deleteConversation = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId } = args;
+
+    if (!conversationId) {
+      throw new ConvexError({ message: "Conversation ID is required to delete a conversation" });
+    }
+
+    // Delete all messages associated with the conversation
+    const messages = await ctx.db
+      .query("messages")
+      .filter((q) => q.eq(q.field("conversationId"), conversationId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+
+    // Delete the conversation itself
+    await ctx.db.delete(conversationId);
+  },
+});
+
 export const createConversation = internalMutation({
   args: {
     userId: v.string(),

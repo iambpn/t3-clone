@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { parseError, safeExec } from "@/lib/error";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/useAppStore";
 import { useModalStore } from "@/store/useModelStore";
 import type { ParamsType } from "@/types/params.type";
 import type { Id } from "convex/_generated/dataModel";
@@ -13,7 +14,7 @@ import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { useShallow } from "zustand/shallow";
 import { api } from "../../convex/_generated/api";
-import { useAppStore } from "@/store/useAppStore";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export function MessageInput() {
   const [input, setInput] = useState("");
@@ -121,9 +122,21 @@ export function MessageInput() {
     <form onSubmit={handleSubmit} className='relative'>
       <div className='relative flex flex-col p-2 gap-0.5 bg-muted/50 rounded-2xl border border-border/50 focus-within:border-ring/50 transition-colors'>
         <div className='relative flex items-center gap-2'>
-          <Button type='button' variant='ghost' size='icon' className='shrink-0 h-8 w-8 rounded-full hover:bg-muted'>
-            <Paperclip className='w-4 h-4' />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='shrink-0 h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-muted-foreground'
+              >
+                <Paperclip className='w-4 h-4' />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>File input is not supported yet</p>
+            </TooltipContent>
+          </Tooltip>
 
           <div className='flex-1 relative'>
             <Textarea
@@ -139,12 +152,38 @@ export function MessageInput() {
           </div>
 
           <div className='flex items-center gap-1 shrink-0'>
-            <Button type='button' variant='ghost' size='icon' className='h-8 w-8 rounded-full hover:bg-muted'>
-              <Smile className='w-4 h-4' />
-            </Button>
-            <Button type='button' variant='ghost' size='icon' className='h-8 w-8 rounded-full hover:bg-muted'>
-              <Mic className='w-4 h-4' />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  className='h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-muted-foreground'
+                >
+                  <Smile className='w-4 h-4' />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Emoji input is not supported yet</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  className='h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-muted-foreground'
+                >
+                  <Mic className='w-4 h-4' />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Voice input is not supported yet</p>
+              </TooltipContent>
+            </Tooltip>
+
             <Button
               type='submit'
               disabled={isMessageLoading || !input.trim()}

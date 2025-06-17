@@ -20,8 +20,8 @@ import { parseError, safeExec } from "@/lib/error";
 import type { ParamsType } from "@/types/params.type";
 import { SignedIn, SignedOut, SignInButton, useAuth, UserProfile, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
-import { usePaginatedQuery } from "convex/react";
-import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings } from "lucide-react";
+import { useMutation, usePaginatedQuery } from "convex/react";
+import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import type { Id } from "convex/_generated/dataModel";
 
 const CONVERSATION_PER_PAGE = 20;
 
@@ -66,6 +67,27 @@ export default function ChatSidebar() {
       toast.error(errorMessage);
     }
   );
+
+  const deleteConversation = useMutation(api.chat.deleteConversation);
+
+  const onDeleteConversation = async (conversationId: Id<"conversations">) => {
+    if (!isSignedIn) {
+      toast.error("You must be signed in to delete a conversation.");
+      return;
+    }
+
+    try {
+      await deleteConversation({ conversationId });
+      if (params.conversationId === conversationId) {
+        navigate("/");
+      }
+      toast.success("Conversation deleted successfully.");
+    } catch (error) {
+      const errorMessage = parseError(error);
+      console.error("Error deleting conversation:", error);
+      toast.error(`Failed to delete conversation: ${errorMessage}`);
+    }
+  };
 
   useEffect(() => {
     // if scrolled to bottom, load more conversations
@@ -125,7 +147,7 @@ export default function ChatSidebar() {
                 {conversations &&
                   !!conversations.results.length &&
                   conversations.results.map((chat) => (
-                    <SidebarMenuItem key={chat._id}>
+                    <SidebarMenuItem key={chat._id} className='group/menu-item-custom'>
                       <SidebarMenuButton
                         className='flex flex-col items-start h-auto py-2 gap-0.5'
                         isActive={chat._id === params.conversationId}
@@ -134,6 +156,10 @@ export default function ChatSidebar() {
                         <div className='flex items-center gap-2 w-full'>
                           <MessageSquare className='w-4 h-4 text-muted-foreground' />
                           <span className='font-medium truncate flex-1'>{chat.title}</span>
+                          <Trash2
+                            className='w-4 h-4 opacity-0 group-hover/menu-item-custom:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity'
+                            onClick={() => onDeleteConversation(chat._id)}
+                          />
                         </div>
                         <div className='text-xs text-muted-foreground ml-6'>
                           {timestampToRelativeDate(chat.updatedAt)}
