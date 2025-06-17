@@ -12,16 +12,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { AppConstants } from "@/constants/app.constant";
 import { useScrolledToBottom } from "@/hooks/useScrollToBottom";
 import { timestampToRelativeDate } from "@/lib/date";
 import { parseError, safeExec } from "@/lib/error";
+import { isMobile } from "@/lib/isMobile";
 import type { ParamsType } from "@/types/params.type";
 import { SignedIn, SignedOut, SignInButton, useAuth, UserProfile, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
+import type { Id } from "convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery } from "convex/react";
-import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings, Trash2 } from "lucide-react";
+import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -35,7 +38,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import type { Id } from "convex/_generated/dataModel";
 
 const CONVERSATION_PER_PAGE = 20;
 
@@ -49,6 +51,7 @@ export default function ChatSidebar() {
 
   const navigate = useNavigate();
   const params = useParams<ParamsType>();
+  const { toggleSidebar } = useSidebar();
 
   const { isAtBottom } = useScrolledToBottom(scrollContainerRef, 10);
 
@@ -86,7 +89,20 @@ export default function ChatSidebar() {
     }
   }, [hasScrollbar, conversations]);
 
+  const closeSidebarIfInMobile = () => {
+    if (isMobile()) {
+      toggleSidebar();
+    }
+  };
+
+  const openSettingsModal = () => {
+    closeSidebarIfInMobile();
+    setOpenSetting(true);
+  };
+
   const onConversationSelect = (conversationId: string | null) => {
+    closeSidebarIfInMobile();
+
     if (!conversationId) {
       navigate("/");
       return;
@@ -162,7 +178,7 @@ export default function ChatSidebar() {
                           <span className='font-medium truncate flex-1'>{chat.title}</span>
                           {deletingConversationId !== chat._id && (
                             <Trash2
-                              className='w-4 h-4 opacity-0 group-hover/menu-item-custom:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity'
+                              className='w-4 h-4 opacity-100 md:opacity-0 md:group-hover/menu-item-custom:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity'
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onDeleteConversation(chat._id);
@@ -198,7 +214,10 @@ export default function ChatSidebar() {
         <SidebarFooter>
           <SignedOut>
             <SignInButton mode='modal' appearance={{ baseTheme: dark }}>
-              <Button className='w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'>
+              <Button
+                className='w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'
+                onClick={() => closeSidebarIfInMobile()}
+              >
                 Sign In
               </Button>
             </SignInButton>
@@ -224,7 +243,7 @@ export default function ChatSidebar() {
                     </SidebarMenuButton>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side='top' className='w-56'>
-                    <DropdownMenuItem onClick={() => setOpenSetting(true)}>
+                    <DropdownMenuItem onClick={() => openSettingsModal()}>
                       <Settings className='w-4 h-4 mr-2' />
                       Manege Account
                     </DropdownMenuItem>
@@ -244,6 +263,11 @@ export default function ChatSidebar() {
 
       {isSignedIn && openSetting && (
         <Modal isOpen={openSetting} onClose={() => setOpenSetting(false)}>
+          <div className='relative z-10'>
+            <button onClick={() => setOpenSetting(false)} className="absolute right-3 top-2">
+              <X />
+            </button>
+          </div>
           <UserProfile
             appearance={{
               baseTheme: dark,
