@@ -57,7 +57,7 @@ async function* generateOpenAIChatResponse(
     for await (const chunk of response) {
       const finishedReason = chunk.choices[0]?.finish_reason;
 
-      reasoning_content = (chunk.choices[0].delta as any).reasoning_content || null;
+      reasoning_content += (chunk.choices[0].delta as any).reasoning_content || "";
 
       switch (finishedReason) {
         case "stop":
@@ -201,7 +201,7 @@ async function* generateGeminiChatResponse(
               if (!part.text) {
                 continue;
               } else if (part.thought) {
-                reasoning_content += part.text;
+                reasoning_content += part.text || "";
               } else {
                 content += part.text;
               }
@@ -215,7 +215,7 @@ async function* generateGeminiChatResponse(
               if (!part.text) {
                 continue;
               } else if (part.thought) {
-                reasoning_content += part.text;
+                reasoning_content += part.text || "";
               } else {
                 content += part.text;
               }

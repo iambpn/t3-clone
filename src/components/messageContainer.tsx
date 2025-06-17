@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import WelcomeMessage from "./WelcomeMessage";
 import { LoadingSpinner } from "./loadingSpinner";
-import { MessageChat } from "./messageChat";
+import { ChatMessageUI } from "./chatMessageUI";
 import { MessageInput } from "./messageInput";
 import { useSidebar } from "./ui/sidebar";
 type Props = {};
@@ -105,7 +105,7 @@ export default function MessageContainer({}: Props) {
 
             {conversationId &&
               messages &&
-              messages.map((message) => <MessageChat key={message._id} message={message} />)}
+              messages.map((message) => <ChatMessageUI key={message._id} message={message} />)}
 
             {conversationId && isAssistantMessageLoading && !isAssistantSteaming && (
               <div className='flex items-center justify-start pb-4 pt-2'>
