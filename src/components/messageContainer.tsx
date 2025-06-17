@@ -130,11 +130,11 @@ export default function MessageContainer({}: Props) {
           <MessageInput />
         </div>
       </div>
-      <span className='text-gray-500 text-xs absolute bottom-0 right-0 mr-4.5 mb-2.5 lg:mb-1 lg:mr-2'>
+      {/* <span className='text-gray-500 text-xs absolute bottom-0 right-0 mr-4.5 mb-2.5 lg:mb-1 lg:mr-2'>
         <a href='https://github.com/iambpn' className='hover:underline' target='_blank' rel='noopener noreferrer'>
           @iambpn
         </a>
-      </span>
+      </span> */}
     </div>
   );
 }
