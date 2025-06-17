@@ -45,6 +45,8 @@ export default function ChatSidebar() {
   const { user, isSignedIn } = useUser();
   const { signOut } = useAuth();
   const [openSetting, setOpenSetting] = useState(false);
+  const [deletingConversationId, setDeletingConversationId] = useState<Id<"conversations"> | null>(null);
+
   const navigate = useNavigate();
   const params = useParams<ParamsType>();
 
@@ -70,25 +72,6 @@ export default function ChatSidebar() {
 
   const deleteConversation = useMutation(api.chat.deleteConversation);
 
-  const onDeleteConversation = async (conversationId: Id<"conversations">) => {
-    if (!isSignedIn) {
-      toast.error("You must be signed in to delete a conversation.");
-      return;
-    }
-
-    try {
-      await deleteConversation({ conversationId });
-      if (params.conversationId === conversationId) {
-        navigate("/");
-      }
-      toast.success("Conversation deleted successfully.");
-    } catch (error) {
-      const errorMessage = parseError(error);
-      console.error("Error deleting conversation:", error);
-      toast.error(`Failed to delete conversation: ${errorMessage}`);
-    }
-  };
-
   useEffect(() => {
     // if scrolled to bottom, load more conversations
     if (isAtBottom && conversations && !conversations.isLoading && conversations.status === "CanLoadMore") {
@@ -110,6 +93,27 @@ export default function ChatSidebar() {
     }
 
     navigate(`/${conversationId}`);
+  };
+
+  const onDeleteConversation = async (conversationId: Id<"conversations">) => {
+    if (!isSignedIn) {
+      toast.error("You must be signed in to delete a conversation.");
+      return;
+    }
+
+    try {
+      setDeletingConversationId(conversationId);
+      await deleteConversation({ conversationId });
+      setDeletingConversationId(null);
+      if (params.conversationId === conversationId) {
+        navigate("/");
+      }
+      toast.success("Conversation deleted successfully.");
+    } catch (error) {
+      const errorMessage = parseError(error);
+      console.error("Error deleting conversation:", error);
+      toast.error(`Failed to delete conversation: ${errorMessage}`);
+    }
   };
 
   return (
@@ -156,10 +160,16 @@ export default function ChatSidebar() {
                         <div className='flex items-center gap-2 w-full'>
                           <MessageSquare className='w-4 h-4 text-muted-foreground' />
                           <span className='font-medium truncate flex-1'>{chat.title}</span>
-                          <Trash2
-                            className='w-4 h-4 opacity-0 group-hover/menu-item-custom:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity'
-                            onClick={() => onDeleteConversation(chat._id)}
-                          />
+                          {deletingConversationId !== chat._id && (
+                            <Trash2
+                              className='w-4 h-4 opacity-0 group-hover/menu-item-custom:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity'
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteConversation(chat._id);
+                              }}
+                            />
+                          )}
+                          {deletingConversationId === chat._id && <LoadingSpinner className={`w-4! h-4!`} />}
                         </div>
                         <div className='text-xs text-muted-foreground ml-6'>
                           {timestampToRelativeDate(chat.updatedAt)}

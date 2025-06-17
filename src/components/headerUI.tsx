@@ -30,7 +30,9 @@ export function HeaderUI() {
     }
   );
 
-  const selectedConversation = conversations?.results.find((conversation) => conversation._id === params.conversationId);
+  const selectedConversation = conversations?.results.find(
+    (conversation) => conversation._id === params.conversationId
+  );
 
   return (
     <header className='flex h-14 shrink-0 items-center justify-between gap-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
@@ -40,7 +42,9 @@ export function HeaderUI() {
           <div className='w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-md flex items-center justify-center'>
             <Bot className='w-4 h-4 text-white' />
           </div>
-          <span className='font-semibold'>{selectedConversation?.title || "Start New Conversation"}</span>
+          <span className='font-semibold text-sm md:text-base'>
+            {selectedConversation?.title || "Start New Conversation"}
+          </span>
         </div>
       </div>
       <div className='px-4'>
@@ -63,7 +67,7 @@ export function HeaderUI() {
         )}
         {!user && (
           <div
-            className='flex items-center gap-2 cursor-pointer hover:underline'
+            className='flex items-center gap-2 cursor-pointer hover:underline text-sm md:text-base'
             onClick={() =>
               clerk.openSignIn({
                 appearance: {

@@ -16,7 +16,7 @@ export default function RootLayout() {
 
   return (
     <SidebarProvider open={isSidebarOpen} onOpenChange={setSidebarOpen}>
-      <div className='flex h-screen w-full'>
+      <div className='flex h-[100dvh] w-full'>
         <ChatSidebar />
         <SidebarInset className='flex flex-col'>
           <HeaderUI />
