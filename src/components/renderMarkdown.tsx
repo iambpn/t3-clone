@@ -10,7 +10,7 @@ export function RenderMarkdown({ content }: { content: string }) {
       rehypePlugins={[rehypeRaw, rehypeHighlight]}
       components={{
         pre: ({ node, ...props }) => (
-          <pre {...props} className='p-1! mt-2!'>
+          <pre {...props} className='p-1! mt-2! whitespace-pre-wrap!'>
             {props.children}
           </pre>
         ),

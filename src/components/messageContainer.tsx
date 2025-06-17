@@ -108,8 +108,9 @@ export default function MessageContainer({}: Props) {
               messages.map((message) => <ChatMessageUI key={message._id} message={message} />)}
 
             {conversationId && isAssistantMessageLoading && !isAssistantSteaming && (
-              <div className='flex items-center justify-start pb-4 pt-2'>
+              <div className='flex items-center justify-start pb-4 pt-2 gap-2.5 text-gray-500'>
                 <LoadingSpinner className='w-5! h-5!' />
+                <span className='text-sm font-semibold'>Going through your prompts ...</span>
               </div>
             )}
 
