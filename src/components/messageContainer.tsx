@@ -1,24 +1,25 @@
+import { safeExec } from "@/lib/error";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/useAppStore";
 import type { ParamsType } from "@/types/params.type";
 import type { Id } from "convex/_generated/dataModel";
 import { useQuery } from "convex/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import WelcomeMessage from "./WelcomeMessage";
 import { LoadingSpinner } from "./loadingSpinner";
 import { MessageChat } from "./messageChat";
 import { MessageInput } from "./messageInput";
 import { useSidebar } from "./ui/sidebar";
-import { parseError, safeExec } from "@/lib/error";
-import { toast } from "sonner";
-import { useAppStore } from "@/store/useAppStore";
-
 type Props = {};
 
 export default function MessageContainer({}: Props) {
   const { open } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
 
   const isAssistantMessageLoading = useAppStore((state) => state.isMessageLoading);
   const setAssistantMessageLoading = useAppStore((state) => state.setIsMessageLoading);
@@ -47,10 +48,37 @@ export default function MessageContainer({}: Props) {
   const lastMessage = messages?.[messages.length - 1];
   const isAssistantSteaming = lastMessage?.role === "assistant" && !lastMessage.isCompleted;
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // Define threshold for near-bottom detection
+  const NEAR_BOTTOM_THRESHOLD = 10; // pixels from bottom
 
+  // Check if user is near bottom of scroll
+  const checkIfNearBottom = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return false;
+
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < NEAR_BOTTOM_THRESHOLD;
+    return isNearBottom;
+  };
+
+  // Handle scroll events
+  const handleScroll = () => {
+    const isNearBottom = checkIfNearBottom();
+    setIsUserScrolledUp(!isNearBottom);
+  };
+
+  // Auto-scroll only if user hasn't scrolled up
+  useEffect(() => {
+    if (!isUserScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isUserScrolledUp]);
+
+  // Reset scroll state when conversation changes
+  useEffect(() => {
+    setIsUserScrolledUp(false);
+  }, [conversationId]);
+
+  // update loading state for assistant message
   useEffect(() => {
     if (lastMessage && lastMessage.role === "assistant" && lastMessage.isCompleted) {
       setAssistantMessageLoading(false);
@@ -58,11 +86,15 @@ export default function MessageContainer({}: Props) {
   }, [lastMessage]);
 
   return (
-    <div className='flex flex-col flex-1 w-full items-center'>
+    <div className='flex flex-col flex-1 w-full items-center overflow-hidden'>
       {/* Messages Container */}
-      <div className={cn("h-full overflow-hidden transition-[width] duration-300 w-full", chatWidth)}>
-        <div className='h-full px-4 py-1'>
-          <div className='h-full overflow-y-hidden'>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className={cn("flex flex-1 justify-center overflow-y-scroll transition-[width] duration-300 w-full")}
+      >
+        <div className={cn("h-full px-4 py-1 w-full", chatWidth)}>
+          <div className='h-full'>
             {!conversationId && <WelcomeMessage showDescription={true} />}
 
             {conversationId && !messages && (
@@ -76,7 +108,7 @@ export default function MessageContainer({}: Props) {
               messages.map((message) => <MessageChat key={message._id} message={message} />)}
 
             {conversationId && isAssistantMessageLoading && !isAssistantSteaming && (
-              <div className='flex items-center justify-start'>
+              <div className='flex items-center justify-start pb-4 pt-2'>
                 <LoadingSpinner className='w-5! h-5!' />
               </div>
             )}

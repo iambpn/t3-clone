@@ -8,13 +8,13 @@ export type AppStateSlice = {
 
 export const useAppStore = create<AppStateSlice>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       isMessageLoading: false,
       setIsMessageLoading: (isLoading: boolean) => set({ isMessageLoading: isLoading }),
     }),
     {
       name: "app-state",
-      partialize: (state) => ({}),
+      partialize: () => ({}),
     } // Persist only the selected state
   )
 );

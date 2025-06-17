@@ -1,7 +1,8 @@
 import { parseError, safeExec } from "@/lib/error";
+import type { ParamsType } from "@/types/params.type";
 import { useClerk, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { Bot } from "lucide-react";
 import { useParams } from "react-router";
 import { toast } from "sonner";
@@ -9,7 +10,6 @@ import { api } from "../../convex/_generated/api";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { SidebarTrigger } from "./ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import type { ParamsType } from "@/types/params.type";
 
 export function HeaderUI() {
   const { user } = useUser();
@@ -17,14 +17,20 @@ export function HeaderUI() {
   const params = useParams<ParamsType>();
 
   const conversations = safeExec(
-    () => useQuery(api.chat.getConversations),
+    () =>
+      usePaginatedQuery(
+        api.chat.getConversations,
+        {},
+        {
+          initialNumItems: 10,
+        }
+      ),
     (error) => {
       toast.error(parseError(error));
-      return [];
     }
   );
 
-  const selectedConversation = conversations?.find((conversation) => conversation._id === params.conversationId);
+  const selectedConversation = conversations?.results.find((conversation) => conversation._id === params.conversationId);
 
   return (
     <header className='flex h-14 shrink-0 items-center justify-between gap-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>

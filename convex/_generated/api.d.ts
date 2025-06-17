@@ -14,9 +14,12 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as chat from "../chat.js";
+import type * as constants_model from "../constants/model.js";
 import type * as constants_systemPrompt from "../constants/systemPrompt.js";
 import type * as model from "../model.js";
 import type * as providers_DeepSeek from "../providers/DeepSeek.js";
+import type * as providers_Gemini from "../providers/Gemini.js";
+import type * as types from "../types.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -28,9 +31,12 @@ import type * as providers_DeepSeek from "../providers/DeepSeek.js";
  */
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
+  "constants/model": typeof constants_model;
   "constants/systemPrompt": typeof constants_systemPrompt;
   model: typeof model;
   "providers/DeepSeek": typeof providers_DeepSeek;
+  "providers/Gemini": typeof providers_Gemini;
+  types: typeof types;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

@@ -14,14 +14,15 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { AppConstants } from "@/constants/app.constant";
+import { useScrolledToBottom } from "@/hooks/useScrollToBottom";
 import { timestampToRelativeDate } from "@/lib/date";
 import { parseError, safeExec } from "@/lib/error";
 import type { ParamsType } from "@/types/params.type";
 import { SignedIn, SignedOut, SignInButton, useAuth, UserProfile, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
@@ -35,20 +36,50 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
+const CONVERSATION_PER_PAGE = 20;
+
 export default function ChatSidebar() {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   const { user, isSignedIn } = useUser();
   const { signOut } = useAuth();
   const [openSetting, setOpenSetting] = useState(false);
   const navigate = useNavigate();
   const params = useParams<ParamsType>();
 
+  const { isAtBottom } = useScrolledToBottom(scrollContainerRef, 10);
+
+  const hasScrollbar =
+    (scrollContainerRef.current?.scrollHeight ?? 0) > (scrollContainerRef.current?.clientHeight ?? 0);
+
   const conversations = safeExec(
-    () => useQuery(api.chat.getConversations),
+    () =>
+      usePaginatedQuery(
+        api.chat.getConversations,
+        {},
+        {
+          initialNumItems: CONVERSATION_PER_PAGE,
+        }
+      ),
     (error) => {
       const errorMessage = parseError(error);
       toast.error(errorMessage);
     }
   );
+
+  useEffect(() => {
+    // if scrolled to bottom, load more conversations
+    if (isAtBottom && conversations && !conversations.isLoading && conversations.status === "CanLoadMore") {
+      conversations.loadMore(CONVERSATION_PER_PAGE);
+    }
+  }, [isAtBottom]);
+
+  useEffect(() => {
+    // if conversations is loaded and the scrollbar is not present then load another page until either scrollbar appears or no more conversations are available
+    if (conversations && !conversations.isLoading && !hasScrollbar && conversations.status === "CanLoadMore") {
+      conversations.loadMore(CONVERSATION_PER_PAGE);
+    }
+  }, [hasScrollbar, conversations]);
 
   const onConversationSelect = (conversationId: string | null) => {
     if (!conversationId) {
@@ -86,14 +117,14 @@ export default function ChatSidebar() {
           </Button>
         </SidebarHeader>
 
-        <SidebarContent>
+        <SidebarContent ref={scrollContainerRef}>
           <SidebarGroup>
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-            <SidebarGroupContent>
+            <SidebarGroupContent className='overflow-y-auto'>
               <SidebarMenu>
                 {conversations &&
-                  conversations.length > 0 &&
-                  conversations.map((chat) => (
+                  !!conversations.results.length &&
+                  conversations.results.map((chat) => (
                     <SidebarMenuItem key={chat._id}>
                       <SidebarMenuButton
                         className='flex flex-col items-start h-auto py-2 gap-0.5'
@@ -111,16 +142,18 @@ export default function ChatSidebar() {
                     </SidebarMenuItem>
                   ))}
 
-                {conversations && conversations.length === 0 && (
+                {conversations && !conversations.isLoading && conversations.results.length === 0 && (
                   <div className='flex items-center justify-center h-8 text-muted-foreground'>
-                    No conversations found
+                    {isSignedIn ? "No conversations found" : "Sign in to start chatting"}
                   </div>
                 )}
-                {!conversations && (
-                  <div className='flex items-center justify-center h-8'>
-                    <LoadingSpinner className='w-6! h-6!' />
-                  </div>
-                )}
+
+                {!conversations ||
+                  (conversations.isLoading && (
+                    <div className='flex items-center justify-center h-8'>
+                      <LoadingSpinner className='w-6! h-6!' />
+                    </div>
+                  ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

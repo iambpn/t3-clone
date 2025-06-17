@@ -27,7 +27,7 @@ export function MessageChat({ message }: Props) {
 
       {message.role === "assistant" && (
         <div className='w-full prose prose-sm dark:prose-invert py-5'>
-          <p className={`m-0 leading-relaxed text-foreground markdown-body bg-transparent!`}>
+          <div className={`m-0 leading-relaxed text-foreground markdown-body bg-transparent!`}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw, rehypeHighlight]}
@@ -52,7 +52,14 @@ export function MessageChat({ message }: Props) {
             >
               {message.content}
             </ReactMarkdown>
-          </p>
+
+            {/* show error message */}
+            {message.errorMessage && (
+              <div className='text-red-500 mt-2'>
+                <strong>Error:</strong> {message.errorMessage}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

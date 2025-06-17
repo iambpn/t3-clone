@@ -1,4 +1,3 @@
-import { error } from "console";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -10,6 +9,7 @@ export default defineSchema({
       vision: v.boolean(),
       reasoning: v.boolean(),
     }),
+    type: v.union(v.literal("google"), v.literal("deepseek")),
   }).index("by_model_id", ["modelId"]),
   conversations: defineTable({
     title: v.string(),
@@ -25,6 +25,5 @@ export default defineSchema({
     reasoningContent: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     completed: v.boolean(),
-  })
-    .index("by_conversation_id", ["conversationId"]),
+  }).index("by_conversation_id", ["conversationId"]),
 });

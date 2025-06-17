@@ -11,7 +11,7 @@ export type ModelState = {
 
 export const useModalStore = create<ModelState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       selectedModel: null,
       setSelectedModel: (model: ModelReturnType | null) => set({ selectedModel: model }),
     }),

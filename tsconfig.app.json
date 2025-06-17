@@ -27,5 +27,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "convex/providers/DeepSeek.ts"]
+  "include": ["src"]
 }

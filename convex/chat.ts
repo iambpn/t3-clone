@@ -1,30 +1,44 @@
+import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { generateChatResponse } from "./providers/DeepSeek";
+import { generateLLMResponse } from "./helpers/chat.helper";
+import { ModelArg } from "./types";
 
 export const getConversations = query({
-  args: {},
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
   handler: async (ctx, args) => {
+    const { paginationOpts } = args;
     const user = await ctx.auth.getUserIdentity();
 
     if (!user) {
-      return [];
+      return {
+        continueCursor: "",
+        isDone: true,
+        page: [],
+      } satisfies PaginationResult<never[]>;
     }
 
-    const conversations = await ctx.db
+    const paginatedConversations = await ctx.db
       .query("conversations")
       .withIndex("by_conversation_user_updatedAt", (q) => q.eq("userId", user.subject))
       .order("desc")
-      .collect();
+      .paginate(paginationOpts);
 
-    return conversations.map((conversation) => ({
+    const transformedPage = paginatedConversations.page.map((conversation) => ({
       _id: conversation._id,
       title: conversation.title,
       userId: conversation.userId,
       updatedAt: conversation.updatedAt,
     }));
+
+    return {
+      ...paginatedConversations,
+      page: transformedPage,
+    };
   },
 });
 
@@ -34,19 +48,28 @@ export const getConversationMessages = query({
   },
   handler: async (ctx, args) => {
     const { conversationId } = args;
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new ConvexError("You are not authenticated to view messages");
+    }
+
     if (!conversationId) {
-      throw new Error("Conversation ID is required");
+      throw new ConvexError("Conversation ID is required");
     }
 
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_conversation_id", (q) => q.eq("conversationId", conversationId))
+      .order("asc")
       .collect();
 
     return messages.map((message) => ({
       _id: message._id,
       role: message.role,
       content: message.content,
+      reasoningContent: message.reasoningContent,
+      errorMessage: message.errorMessage,
       conversationIds: message.conversationId,
       isCompleted: message.completed,
     }));
@@ -111,14 +134,19 @@ export const sendMessage = mutation({
     // call the assistant api
     await ctx.scheduler.runAfter(0, internal.chat.askAssistant, {
       conversationId: conversation._id,
-      modelId: model.modelId,
+      model: {
+        modelId: model.modelId,
+        type: model.type,
+        capabilities: model.capabilities,
+        name: model.name,
+      },
       userId: user.subject,
       messages,
     });
 
     if (isNewConversation) {
       // Set the title of the new conversation based on the first message
-      await ctx.scheduler.runAfter(0, internal.chat.generateTitle, {
+      await ctx.scheduler.runAfter(300, internal.chat.generateTitle, {
         conversationId: conversation._id,
         userContent: content,
       });
@@ -137,7 +165,7 @@ export const createConversation = internalMutation({
     const { userId, title } = args;
 
     if (!userId) {
-      throw new Error("Title and User ID are required to create a conversation");
+      throw new ConvexError("Title and User ID are required to create a conversation");
     }
 
     const newConversationId = await ctx.db.insert("conversations", {
@@ -170,12 +198,31 @@ export const getModelById = internalQuery({
       throw new ConvexError({ message: "Model not found" });
     }
 
-    return {
-      _id: model._id,
-      name: model.name,
-      modelId: model.modelId,
-      capabilities: model.capabilities,
-    };
+    return model;
+  },
+});
+
+export const getModelByModelId = internalQuery({
+  args: {
+    modelId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { modelId } = args;
+
+    if (!modelId) {
+      throw new ConvexError({ message: "Model ID is required to fetch model details" });
+    }
+
+    const model = await ctx.db
+      .query("models")
+      .filter((q) => q.eq(q.field("modelId"), modelId))
+      .first();
+
+    if (!model) {
+      throw new ConvexError({ message: "Model not found" });
+    }
+
+    return model;
   },
 });
 
@@ -193,7 +240,7 @@ export const getMessagesForChat = internalQuery({
 
     const messages = await ctx.db
       .query("messages")
-      .filter((q) => q.eq(q.field("conversationId"), conversationId))
+      .filter((q) => q.and(q.eq(q.field("conversationId"), conversationId), q.neq(q.field("content"), "")))
       .order("desc")
       .take(lastN || 50);
 
@@ -207,7 +254,7 @@ export const getMessagesForChat = internalQuery({
 export const askAssistant = internalAction({
   args: {
     conversationId: v.id("conversations"),
-    modelId: v.string(),
+    model: ModelArg,
     userId: v.string(),
     messages: v.array(
       v.object({
@@ -217,26 +264,46 @@ export const askAssistant = internalAction({
     ),
   },
   handler: async (ctx, args) => {
-    const { conversationId, modelId, userId, messages } = args;
+    try {
+      const { conversationId, model, userId, messages } = args;
 
-    if (!conversationId || !modelId || !userId || messages.length === 0) {
-      throw new ConvexError({ message: "All fields are required to ask the assistant" });
-    }
+      if (!conversationId || !model || !userId || messages.length === 0) {
+        throw new ConvexError({ message: "All fields are required to ask the assistant" });
+      }
 
-    let messageId: Id<"messages"> | undefined;
-    for await (const response of generateChatResponse(messages, modelId)) {
-      // save the assistant's response
-      const msgResponse = await ctx.runMutation(internal.chat.saveAssistantResponse, {
-        conversationId,
-        role: "assistant",
-        content: response.content,
-        reasoningContent: response.reasoning_content || undefined,
-        errorMessage: response.errorMessage || undefined,
-        messageId: messageId,
-        completed: response.finishedReason !== null,
-      });
+      let messageId: Id<"messages"> | undefined;
+      const responseGenerator = generateLLMResponse(messages, model);
+      if (typeof responseGenerator === "string") {
+        // Error while generating response
+        console.error("Error generating response:", responseGenerator);
+        await ctx.runMutation(internal.chat.saveAssistantResponse, {
+          conversationId,
+          role: "assistant",
+          content: "",
+          reasoningContent: undefined,
+          errorMessage: "Error while generating response",
+          messageId: messageId,
+          completed: true,
+        });
+        return;
+      }
 
-      messageId = msgResponse.messageId;
+      for await (const response of responseGenerator) {
+        // save the assistant's response
+        const msgResponse = await ctx.runMutation(internal.chat.saveAssistantResponse, {
+          conversationId,
+          role: "assistant",
+          content: response.content,
+          reasoningContent: response.reasoning_content || undefined,
+          errorMessage: response.errorMessage || undefined,
+          messageId: messageId,
+          completed: response.isComplete,
+        });
+
+        messageId = msgResponse.messageId;
+      }
+    } catch (error) {
+      console.error({ error });
     }
   },
 });
@@ -253,7 +320,11 @@ export const generateTitle = internalAction({
       throw new ConvexError({ message: "Conversation ID and content are required" });
     }
 
-    const responseGenerator = generateChatResponse(
+    const model = await ctx.runQuery(internal.chat.getModelByModelId, {
+      modelId: "deepseek-chat",
+    });
+
+    const responseGenerator = generateLLMResponse(
       [
         {
           role: "system",
@@ -262,8 +333,14 @@ export const generateTitle = internalAction({
         },
         { role: "user", content: userContent },
       ],
-      "deepseek-chat"
+      model
     );
+
+    if (typeof responseGenerator === "string") {
+      // Error while generating response
+      console.error("Error generating title:", responseGenerator);
+      return;
+    }
 
     for await (const response of responseGenerator) {
       await ctx.runMutation(internal.chat.setTitle, {
