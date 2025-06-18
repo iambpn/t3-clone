@@ -3,11 +3,38 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { AppConfig } from "./constants/app.config";
 import { SummarizeSystemPrompt } from "./constants/systemPrompt";
 import { getAllChildConversations, getParentMessages, transformConversationData } from "./helpers/chat.helper";
 import { generateLLMResponse } from "./helpers/llm.helper";
-import { ChatRoles, ModelArg } from "./types";
-import { AppConfig } from "./constants/app.config";
+import { type ChatRoles, ModelArg } from "./types";
+
+export const getConversationById = query({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId } = args;
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new ConvexError("You are not authenticated to view conversations");
+    }
+    const conversation = await ctx.db
+      .query("conversations")
+      .filter((q) => q.eq(q.field("_id"), conversationId))
+      .first();
+
+    if (!conversation) {
+      throw new ConvexError("Conversation not found");
+    }
+
+    if (conversation.userId !== user.subject) {
+      throw new ConvexError("You are not authorized to view this conversation");
+    }
+
+    return conversation;
+  },
+});
 
 export const getConversations = query({
   args: {
@@ -27,7 +54,9 @@ export const getConversations = query({
 
     const paginatedConversations = await ctx.db
       .query("conversations")
-      .withIndex("by_conversation_user_updatedAt", (q) => q.eq("userId", user.subject))
+      .withIndex("by_conversation_user_parent_updatedAt", (q) =>
+        q.eq("userId", user.subject).eq("parentConversationId", undefined)
+      )
       .order("desc")
       .paginate(paginationOpts);
 
@@ -42,10 +71,10 @@ export const getConversations = query({
 
 export const getChildConversations = query({
   args: {
-    conversationId: v.id("conversations"),
+    parentConversationId: v.id("conversations"),
   },
   handler: async (ctx, args) => {
-    const { conversationId } = args;
+    const { parentConversationId } = args;
     const user = await ctx.auth.getUserIdentity();
 
     if (!user) {
@@ -54,14 +83,14 @@ export const getChildConversations = query({
 
     const conversation = await ctx.db
       .query("conversations")
-      .filter((q) => q.eq(q.field("_id"), conversationId))
+      .filter((q) => q.eq(q.field("_id"), parentConversationId))
       .first();
 
     if (!conversation) {
       throw new ConvexError("Conversation not found");
     }
 
-    const childConversations = await getAllChildConversations(conversationId, ctx);
+    const childConversations = await getAllChildConversations(parentConversationId, ctx);
 
     return transformConversationData(childConversations);
   },
@@ -96,16 +125,7 @@ export const getConversationMessages = query({
       .order("asc")
       .collect();
 
-    // get message summary
-    const summaryContent = await ctx.runQuery(internal.chat.getSummaryContentByConversationId, {
-      conversationId: conversation._id,
-    });
-
-    const combinedMessages = summaryContent
-      ? [summaryContent, ...parentMessages, ...messages]
-      : [...parentMessages, ...messages];
-
-    return combinedMessages.map((message) => ({
+    const combinedMessages = [...parentMessages.reverse(), ...messages].map((message) => ({
       _id: message._id,
       role: message.role,
       content: message.content,
@@ -113,8 +133,30 @@ export const getConversationMessages = query({
       errorMessage: message.errorMessage,
       conversationId: message.conversationId,
       isCompleted: message.completed,
-      isSummary: message.isSummary || false,
+      isSummary: false,
     }));
+
+    // get message summary
+    const summaryContent = await ctx.runQuery(internal.chat.getSummaryContentByConversationId, {
+      conversationId: conversation._id,
+    });
+
+    if (summaryContent) {
+      combinedMessages.unshift({
+        _id: `summaryContentId_${summaryContent._id}` as Id<"messages">,
+        role: "assistant",
+        content: summaryContent.content,
+        reasoningContent: undefined,
+        errorMessage: summaryContent.errorMessage || undefined,
+        conversationId: conversation._id,
+        isCompleted: true,
+        isSummary: true,
+      });
+
+      return combinedMessages;
+    }
+
+    return combinedMessages;
   },
 });
 
@@ -203,11 +245,11 @@ export const sendMessage = mutation({
 
 export const createSplitConversation = mutation({
   args: {
-    conversationId: v.id("conversations"),
+    parentConversationId: v.id("conversations"),
     splitFromMessageId: v.id("messages"),
   },
   handler: async (ctx, args) => {
-    const { conversationId, splitFromMessageId } = args;
+    const { parentConversationId, splitFromMessageId } = args;
 
     // auth identity
     const user = await ctx.auth.getUserIdentity();
@@ -216,13 +258,13 @@ export const createSplitConversation = mutation({
       throw new ConvexError({ message: "You are not authenticated." });
     }
 
-    if (!conversationId || !splitFromMessageId) {
+    if (!parentConversationId || !splitFromMessageId) {
       throw new ConvexError({ message: "Conversation ID and split message ID are required" });
     }
 
     const conversation = await ctx.db
       .query("conversations")
-      .filter((q) => q.eq(q.field("_id"), conversationId))
+      .filter((q) => q.eq(q.field("_id"), parentConversationId))
       .first();
 
     if (!conversation) {
@@ -246,27 +288,30 @@ export const createSplitConversation = mutation({
     }
 
     // Create a new conversation based on the split message
-    const newConversationId = await ctx.runMutation(internal.chat.createConversation, {
+    const newConversationId: Id<"conversations"> = await ctx.runMutation(internal.chat.createConversation, {
       userId: conversation.userId,
       title: `Split from ${conversation.title}`,
       parentId: conversation._id,
       splitFromMessageId: splitMessage._id,
     });
 
-    /**
-     * TODO: splitted conv title can be improved.
-     */
+    await ctx.scheduler.runAfter(0, internal.chat.generateTitle, {
+      conversationId: newConversationId,
+      userContent: splitMessage.content,
+    });
 
-    return newConversationId;
+    return {
+      conversationId: newConversationId,
+    };
   },
 });
 
 export const convertSplitConversationToParent = mutation({
   args: {
-    conversationId: v.id("conversations"),
+    childConversationId: v.id("conversations"),
   },
   handler: async (ctx, args) => {
-    const { conversationId } = args;
+    const { childConversationId } = args;
 
     // auth identity
     const user = await ctx.auth.getUserIdentity();
@@ -277,7 +322,7 @@ export const convertSplitConversationToParent = mutation({
 
     const conversation = await ctx.db
       .query("conversations")
-      .filter((q) => q.eq(q.field("_id"), conversationId))
+      .filter((q) => q.eq(q.field("_id"), childConversationId))
       .first();
 
     if (!conversation) {
@@ -294,23 +339,31 @@ export const convertSplitConversationToParent = mutation({
       take: AppConfig.defaultMessageContext,
     });
 
+    // create conversation summary
+    await ctx.db.insert("conversationSummaries", {
+      conversationId: conversation._id,
+      summarizedContent: "",
+      errorMessage: "",
+      completed: false,
+    });
+
     // summarize the parent messages
     await ctx.scheduler.runAfter(0, internal.chat.summarizeMessages, {
       conversationId: conversation._id,
-      messages: parentMessages.map((msg) => ({
+      messages: parentMessages.reverse().map((msg) => ({
         role: msg.role,
         content: msg.content,
       })),
     });
 
     // Update the conversation to remove the parent relationship
-    await ctx.db.patch(conversationId, {
+    await ctx.db.patch(childConversationId, {
       parentConversationId: undefined,
       splitFromMessageId: undefined,
       updatedAt: Date.now(),
     });
 
-    return { success: true };
+    return { conversationId: childConversationId, parentConversationId: conversation.parentConversationId };
   },
 });
 
@@ -330,19 +383,20 @@ export const deleteConversation = mutation({
       throw new ConvexError({ message: "Conversation not found for provided conversation id" });
     }
 
-    if (conversation.parentConversationId) {
+    // if the conversation is parent then delete all child conversations
+    if (!conversation.parentConversationId) {
       // delete child conversation and its messages
       const childConversations = await getAllChildConversations(conversationId, ctx);
 
       await Promise.all(
         childConversations.map(async (childConversation) => {
+          // delete the child conversation itself
+          await ctx.db.delete(childConversation._id);
+
           // defer deleting message later
           await ctx.scheduler.runAfter(0, internal.chat.deleteConversationMessages, {
             conversationId: childConversation._id,
           });
-
-          // delete the child conversation itself
-          await ctx.db.delete(childConversation._id);
         })
       );
     }
@@ -351,6 +405,16 @@ export const deleteConversation = mutation({
     await ctx.scheduler.runAfter(0, internal.chat.deleteConversationMessages, {
       conversationId: conversationId,
     });
+
+    // delete the conversation summary if exists
+    const conversationSummary = await ctx.db
+      .query("conversationSummaries")
+      .filter((q) => q.eq(q.field("conversationId"), conversationId))
+      .first();
+
+    if (conversationSummary) {
+      await ctx.db.delete(conversationSummary._id);
+    }
 
     // Delete the conversation itself
     await ctx.db.delete(conversationId);
@@ -407,12 +471,13 @@ export const saveSummarizedContent = internalMutation({
     conversationId: v.id("conversations"),
     summarizedContent: v.string(),
     errorMessage: v.optional(v.string()),
+    completed: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const { conversationId, summarizedContent, errorMessage } = args;
+    const { conversationId, summarizedContent, errorMessage, completed } = args;
 
-    if (!conversationId || !summarizedContent) {
-      throw new ConvexError({ message: "Conversation ID and summarized content are required" });
+    if (!conversationId) {
+      throw new ConvexError({ message: "Conversation ID is required" });
     }
 
     // previous summary exists, update it
@@ -423,16 +488,17 @@ export const saveSummarizedContent = internalMutation({
 
     if (existingSummary) {
       await ctx.db.patch(existingSummary._id, {
-        summarizedContent: summarizedContent.trim(),
-        errorMessage: errorMessage?.trim(),
+        summarizedContent: summarizedContent,
+        errorMessage: errorMessage,
       });
       return existingSummary._id;
     }
 
     return await ctx.db.insert("conversationSummaries", {
       conversationId,
-      summarizedContent: summarizedContent.trim(),
-      errorMessage: errorMessage?.trim(),
+      summarizedContent: summarizedContent,
+      errorMessage: errorMessage,
+      completed: completed,
     });
   },
 });
@@ -524,7 +590,9 @@ export const getMessagesForChat = internalQuery({
       });
     }
 
-    let combinedMessages: { role: ChatRoles; content: string }[] = [...parentMessages, ...messages];
+    // since both messages and parentMessages are in descending order,
+    // we need to reverse them to maintain the descending chronological order
+    let combinedMessages: { role: ChatRoles; content: string }[] = [...messages, ...parentMessages];
 
     // if combined messages are less than the limit, fetch summary content
     // and prepend it to the messages
@@ -535,10 +603,11 @@ export const getMessagesForChat = internalQuery({
       });
 
       if (summaryContent) {
-        combinedMessages = [summaryContent, ...combinedMessages];
+        combinedMessages.push(summaryContent);
       }
     }
 
+    // reverse the combined messages to order them in ascending order
     return combinedMessages.reverse().map((message) => ({
       role: message.role,
       content: message.content,
@@ -662,26 +731,23 @@ export const summarizeMessages = internalAction({
     if (typeof responseGenerator === "string") {
       // Error while generating response
       console.error("Error generating summary:", responseGenerator);
-      await ctx.scheduler.runAfter(0, internal.chat.saveSummarizedContent, {
+      await ctx.runMutation(internal.chat.saveSummarizedContent, {
         conversationId: conversationId,
         summarizedContent: "",
         errorMessage: responseGenerator || "Error while generating summary",
+        completed: true,
       });
       return;
     }
 
-    let summaryContent = "";
-    let errorMessage = "";
     for await (const response of responseGenerator) {
-      summaryContent += response.content;
-      errorMessage = response.errorMessage || "";
+      await ctx.runMutation(internal.chat.saveSummarizedContent, {
+        conversationId,
+        summarizedContent: response.content.trim(),
+        errorMessage: response.errorMessage || "",
+        completed: response.isComplete,
+      });
     }
-
-    await ctx.scheduler.runAfter(0, internal.chat.saveSummarizedContent, {
-      conversationId: conversationId,
-      summarizedContent: summaryContent.trim(),
-      errorMessage: errorMessage.trim(),
-    });
   },
 });
 

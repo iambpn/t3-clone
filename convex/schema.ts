@@ -21,6 +21,7 @@ export default defineSchema({
   })
     .index("by_conversation_user", ["userId"])
     .index("by_conversation_user_updatedAt", ["userId", "updatedAt"])
+    .index("by_conversation_user_parent_updatedAt", ["userId", "parentConversationId", "updatedAt"])
     .index("by_conversation_parent", ["parentConversationId"]),
   messages: defineTable({
     conversationId: v.string(),
@@ -34,5 +35,6 @@ export default defineSchema({
     conversationId: v.string(),
     summarizedContent: v.string(),
     errorMessage: v.optional(v.string()),
+    completed: v.boolean(),
   }).index("by_conversation_id", ["conversationId"]),
 });

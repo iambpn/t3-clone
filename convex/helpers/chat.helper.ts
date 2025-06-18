@@ -2,6 +2,14 @@ import type { GenericQueryCtx } from "convex/server";
 import type { DataModel, Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
 
+/**
+ * Conversation's are returned in descending order of _createdTime.
+ *
+ * @param conversation
+ * @param ctx
+ * @param options
+ * @returns
+ */
 export async function getParentMessages(
   conversation: DataModel["conversations"]["document"],
   ctx: GenericQueryCtx<DataModel>,
@@ -25,7 +33,7 @@ export async function getParentMessages(
       .withIndex("by_conversation_id", (q) =>
         q.eq("conversationId", conversation.parentConversationId!).lte("_creationTime", splitMessage._creationTime)
       )
-      .order("asc");
+      .order("desc");
 
     if (options?.take) {
       return await queryBuilder.take(options.take);
@@ -37,10 +45,10 @@ export async function getParentMessages(
   return [];
 }
 
-export async function getAllChildConversations(conversationId: Id<"conversations">, ctx: GenericQueryCtx<DataModel>) {
+export async function getAllChildConversations(parentConversationId: Id<"conversations">, ctx: GenericQueryCtx<DataModel>) {
   const childConversations = await ctx.db
     .query("conversations")
-    .withIndex("by_conversation_parent", (q) => q.eq("parentConversationId", conversationId))
+    .withIndex("by_conversation_parent", (q) => q.eq("parentConversationId", parentConversationId))
     .collect();
 
   return childConversations;

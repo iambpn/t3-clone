@@ -19,12 +19,24 @@ import { useScrolledToBottom } from "@/hooks/useScrollToBottom";
 import { timestampToRelativeDate } from "@/lib/date";
 import { parseError, safeExec } from "@/lib/error";
 import { isMobile } from "@/lib/isMobile";
+import { cn } from "@/lib/utils";
 import type { ParamsType } from "@/types/params.type";
 import { SignedIn, SignedOut, SignInButton, useAuth, UserProfile, useUser } from "@clerk/react-router";
 import { dark } from "@clerk/themes";
 import type { Id } from "convex/_generated/dataModel";
-import { useMutation, usePaginatedQuery } from "convex/react";
-import { Bot, ChevronDown, LogOut, MessageSquare, Plus, Settings, Trash2, X } from "lucide-react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import {
+  Bot,
+  ChevronDown,
+  LogOut,
+  MessageCircleMore,
+  MessageSquare,
+  Plus,
+  Settings,
+  Split,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -38,6 +50,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const CONVERSATION_PER_PAGE = 20;
 
@@ -58,6 +71,29 @@ export default function ChatSidebar() {
   const hasScrollbar =
     (scrollContainerRef.current?.scrollHeight ?? 0) > (scrollContainerRef.current?.clientHeight ?? 0);
 
+  const selectedConversation = safeExec(
+    () =>
+      useQuery(
+        api.chat.getConversationById,
+        params.conversationId
+          ? {
+              conversationId: params.conversationId as Id<"conversations">,
+            }
+          : "skip"
+      ),
+    (error) => {
+      console.error("Error while fetching conversation", error);
+      toast.error("Conversation not found.");
+      navigate("/");
+    }
+  );
+
+  const selectedConversationId = selectedConversation
+    ? selectedConversation.parentConversationId
+      ? selectedConversation.parentConversationId
+      : selectedConversation._id
+    : params.conversationId;
+
   const conversations = safeExec(
     () =>
       usePaginatedQuery(
@@ -73,7 +109,25 @@ export default function ChatSidebar() {
     }
   );
 
+  const childConversations = safeExec(
+    () =>
+      useQuery(
+        api.chat.getChildConversations,
+        selectedConversationId
+          ? {
+              parentConversationId: selectedConversationId as Id<"conversations">,
+            }
+          : "skip"
+      ),
+    (error) => {
+      const errorMessage = parseError(error);
+      console.error("Error fetching child conversations:", error);
+      toast.error(`Failed to load child conversations: ${errorMessage}`);
+    }
+  );
+
   const deleteConversation = useMutation(api.chat.deleteConversation);
+  const convertToConversation = useMutation(api.chat.convertSplitConversationToParent);
 
   useEffect(() => {
     // if scrolled to bottom, load more conversations
@@ -118,17 +172,32 @@ export default function ChatSidebar() {
     }
 
     try {
+      if (selectedConversationId === conversationId) {
+        navigate("/");
+      }
+
       setDeletingConversationId(conversationId);
       await deleteConversation({ conversationId });
       setDeletingConversationId(null);
-      if (params.conversationId === conversationId) {
-        navigate("/");
-      }
       toast.success("Conversation deleted successfully.");
     } catch (error) {
       const errorMessage = parseError(error);
       console.error("Error deleting conversation:", error);
       toast.error(`Failed to delete conversation: ${errorMessage}`);
+    }
+  };
+
+  const handleConvertToConversation = async (childConversationId: string) => {
+    try {
+      const { parentConversationId } = await convertToConversation({
+        childConversationId: childConversationId as Id<"conversations">,
+      });
+      toast.success("Child conversation converted to parent conversation successfully.");
+      navigate(`/${parentConversationId}`);
+    } catch (error) {
+      const errorMessage = parseError(error);
+      console.error("Error converting child conversation:", error);
+      toast.error(`Failed to convert child conversation: ${errorMessage}`);
     }
   };
 
@@ -167,10 +236,16 @@ export default function ChatSidebar() {
                 {conversations &&
                   !!conversations.results.length &&
                   conversations.results.map((chat) => (
-                    <SidebarMenuItem key={chat._id} className='group/menu-item-custom'>
+                    <SidebarMenuItem
+                      key={chat._id}
+                      className={cn(
+                        "group/menu-item-custom",
+                        chat._id === selectedConversationId ? "border rounded-xl" : ""
+                      )}
+                    >
                       <SidebarMenuButton
-                        className='flex flex-col items-start h-auto py-2 gap-0.5'
-                        isActive={chat._id === params.conversationId}
+                        className={cn("flex flex-col items-start h-auto py-2 gap-0.5")}
+                        isActive={chat._id === selectedConversationId}
                         onClick={() => onConversationSelect(chat._id)}
                       >
                         <div className='flex items-center gap-2 w-full'>
@@ -191,6 +266,38 @@ export default function ChatSidebar() {
                           {timestampToRelativeDate(chat.updatedAt)}
                         </div>
                       </SidebarMenuButton>
+                      {selectedConversationId === chat._id && childConversations && childConversations.length > 0 && (
+                        <div className='pl-2 py-1 pr-1 text-sm text-muted-foreground'>
+                          {childConversations.map((childConv, index: number) => (
+                            <SidebarMenuButton
+                              key={index}
+                              isActive={childConv._id === params.conversationId}
+                              className='py-1 h-auto text-left truncate'
+                              onClick={() => {
+                                navigate(`/${childConv._id}`);
+                              }}
+                            >
+                              <div className='flex items-center gap-2 w-full relative group/split'>
+                                <Split className='w-4 h-4 text-muted-foreground rotate-180' />
+                                <span className='truncate'>{childConv.title}</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className='absolute right-0 bg-muted flex items-center gap-1 pl-2 hover:text-blue-500 group-hover/split:opacity-100 opacity-0 transition-opacity'>
+                                      <MessageCircleMore
+                                        className='h-4 w-4'
+                                        onClick={() => handleConvertToConversation(childConv._id)}
+                                      />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Convert to Conversation</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </SidebarMenuButton>
+                          ))}
+                        </div>
+                      )}
                     </SidebarMenuItem>
                   ))}
 
@@ -264,7 +371,7 @@ export default function ChatSidebar() {
       {isSignedIn && openSetting && (
         <Modal isOpen={openSetting} onClose={() => setOpenSetting(false)}>
           <div className='relative z-10'>
-            <button onClick={() => setOpenSetting(false)} className="absolute right-3 top-2">
+            <button onClick={() => setOpenSetting(false)} className='absolute right-3 top-2'>
               <X />
             </button>
           </div>
