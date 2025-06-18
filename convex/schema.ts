@@ -1,6 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { summarizeMessages } from "./chat";
 
 export default defineSchema({
   models: defineTable({
