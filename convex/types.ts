@@ -12,3 +12,5 @@ export const ModelArg = v.object({
 });
 
 export type ModelArgType = typeof ModelArg.type;
+
+export type ChatRoles = "user" | "assistant" | "system";

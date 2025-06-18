@@ -27,13 +27,30 @@ export default function MessageContainer({}: Props) {
   const { conversationId } = useParams<ParamsType>();
   const navigate = useNavigate();
 
+  const selectedConversation = safeExec(
+    () =>
+      useQuery(
+        api.chat.getConversationById,
+        conversationId
+          ? {
+              conversationId: conversationId as Id<"conversations">,
+            }
+          : "skip"
+      ),
+    (error) => {
+      console.error("Error while fetching conversation", error);
+      toast.error("Conversation not found.");
+      navigate("/");
+    }
+  );
+
   const messages = safeExec(
     () =>
       useQuery(
         api.chat.getConversationMessages,
-        conversationId
+        selectedConversation
           ? {
-              conversationId: conversationId as Id<"conversations">,
+              conversationId: selectedConversation._id,
             }
           : "skip"
       ),
@@ -105,7 +122,13 @@ export default function MessageContainer({}: Props) {
 
             {conversationId &&
               messages &&
-              messages.map((message) => <ChatMessageUI key={message._id} message={message} />)}
+              messages.map((message) => (
+                <ChatMessageUI
+                  key={message._id}
+                  message={message}
+                  isSplittedConversation={!!selectedConversation?.parentConversationId}
+                />
+              ))}
 
             {conversationId && isAssistantMessageLoading && !isAssistantSteaming && (
               <div className='flex items-center justify-start pb-4 pt-2 gap-2.5 text-gray-500'>
