@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { summarizeMessages } from "./chat";
 
 export default defineSchema({
   models: defineTable({
@@ -14,10 +15,13 @@ export default defineSchema({
   conversations: defineTable({
     title: v.string(),
     userId: v.string(),
+    parentConversationId: v.optional(v.string()),
+    splitFromMessageId: v.optional(v.string()),
     updatedAt: v.optional(v.number()),
   })
     .index("by_conversation_user", ["userId"])
-    .index("by_conversation_user_updatedAt", ["userId", "updatedAt"]),
+    .index("by_conversation_user_updatedAt", ["userId", "updatedAt"])
+    .index("by_conversation_parent", ["parentConversationId"]),
   messages: defineTable({
     conversationId: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
@@ -25,5 +29,10 @@ export default defineSchema({
     reasoningContent: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     completed: v.boolean(),
+  }).index("by_conversation_id", ["conversationId"]),
+  conversationSummaries: defineTable({
+    conversationId: v.string(),
+    summarizedContent: v.string(),
+    errorMessage: v.optional(v.string()),
   }).index("by_conversation_id", ["conversationId"]),
 });
