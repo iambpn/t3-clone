@@ -7,6 +7,7 @@ import { SummarizeSystemPrompt } from "./constants/systemPrompt";
 import { getAllChildConversations, getParentMessages, transformConversationData } from "./helpers/chat.helper";
 import { generateLLMResponse } from "./helpers/llm.helper";
 import { ChatRoles, ModelArg } from "./types";
+import { AppConfig } from "./constants/app.config";
 
 export const getConversations = query({
   args: {
@@ -172,7 +173,7 @@ export const sendMessage = mutation({
 
     const messages = await ctx.runQuery(internal.chat.getMessagesForChat, {
       conversationId: conversation._id,
-      lastN: 50,
+      take: AppConfig.defaultMessageContext,
     });
 
     // call the assistant api
@@ -290,7 +291,7 @@ export const convertSplitConversationToParent = mutation({
 
     // get parent conversation
     const parentMessages = await getParentMessages(conversation, ctx, {
-      take: 50,
+      take: AppConfig.defaultMessageContext,
     });
 
     // summarize the parent messages
@@ -487,12 +488,10 @@ export const getModelByModelId = internalQuery({
 export const getMessagesForChat = internalQuery({
   args: {
     conversationId: v.id("conversations"),
-    lastN: v.optional(v.number()),
+    take: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { conversationId, lastN } = args;
-
-    const messageLimit = lastN || 50;
+    const { conversationId, take } = args;
 
     const conversation = await ctx.db
       .query("conversations")
@@ -503,15 +502,22 @@ export const getMessagesForChat = internalQuery({
       throw new ConvexError({ message: "Conversation not found for given conversationId" });
     }
 
-    const messages = await ctx.db
+    const queryBuilder = ctx.db
       .query("messages")
       .filter((q) => q.and(q.eq(q.field("conversationId"), conversationId), q.neq(q.field("content"), "")))
-      .order("desc")
-      .take(messageLimit);
+      .order("desc");
+
+    let messages: DataModel["messages"]["document"][] = [];
+
+    if (take) {
+      messages = await queryBuilder.take(take);
+    } else {
+      messages = await queryBuilder.collect();
+    }
 
     let parentMessages: DataModel["messages"]["document"][] = [];
-    if (messages.length < messageLimit) {
-      const newLimit = messageLimit - messages.length;
+    if (!take || messages.length < take) {
+      const newLimit = !take ? undefined : take - messages.length;
 
       parentMessages = await getParentMessages(conversation, ctx, {
         take: newLimit,
@@ -522,7 +528,7 @@ export const getMessagesForChat = internalQuery({
 
     // if combined messages are less than the limit, fetch summary content
     // and prepend it to the messages
-    if (combinedMessages.length < messageLimit) {
+    if (!take || combinedMessages.length < take) {
       // get summary content if available
       const summaryContent = await ctx.runQuery(internal.chat.getSummaryContentByConversationId, {
         conversationId: conversation._id,
