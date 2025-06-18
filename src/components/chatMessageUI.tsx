@@ -98,7 +98,7 @@ export function ChatMessageUI({ message, isSplittedConversation }: Props) {
           )}
 
           {/* add copy icons */}
-          {!isSplittedConversation && (
+          {!(isSplittedConversation || message.isSummary) && (
             <div className='flex items-center gap-2 mt-2.5 cursor-pointer group-hover/control:opacity-100 opacity-0 transition-opacity duration-200'>
               <div className='p-1 hover:bg-muted rounded-2xl'>
                 <Split className='h-4.5 w-4.5' onClick={handleSplitConversation} />

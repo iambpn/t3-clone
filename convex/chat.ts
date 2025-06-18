@@ -149,7 +149,7 @@ export const getConversationMessages = query({
         reasoningContent: undefined,
         errorMessage: summaryContent.errorMessage || undefined,
         conversationId: conversation._id,
-        isCompleted: true,
+        isCompleted: summaryContent.isCompleted,
         isSummary: true,
       });
 
@@ -490,6 +490,7 @@ export const saveSummarizedContent = internalMutation({
       await ctx.db.patch(existingSummary._id, {
         summarizedContent: summarizedContent,
         errorMessage: errorMessage,
+        completed: completed,
       });
       return existingSummary._id;
     }
@@ -641,7 +642,7 @@ export const getSummaryContentByConversationId = internalQuery({
       content: conversationSummary.summarizedContent,
       role: "assistant" as const,
       reasoningContent: undefined,
-      isCompleted: true,
+      isCompleted: conversationSummary.completed,
       isSummary: true,
     };
   },
@@ -723,7 +724,7 @@ export const summarizeMessages = internalAction({
     }
 
     const model = await ctx.runQuery(internal.chat.getModelByModelId, {
-      modelId: "deepseek-reasoner",
+      modelId: "deepseek-chat",
     });
 
     const responseGenerator = generateLLMResponse([SummarizeSystemPrompt, ...messages], model);
