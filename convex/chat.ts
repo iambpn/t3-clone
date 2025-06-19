@@ -229,6 +229,7 @@ export const sendMessage = mutation({
       },
       userId: user.subject,
       messages,
+      isNewConversation,
     });
 
     if (isNewConversation) {
@@ -659,10 +660,11 @@ export const chatWithAssistant = internalAction({
         content: v.string(),
       })
     ),
+    isNewConversation: v.boolean(),
   },
   handler: async (ctx, args) => {
     try {
-      const { conversationId, model, userId, messages } = args;
+      const { conversationId, model, userId, messages, isNewConversation } = args;
 
       if (!conversationId || !model || !userId || messages.length === 0) {
         throw new ConvexError({ message: "All fields are required to ask the assistant" });
@@ -698,6 +700,14 @@ export const chatWithAssistant = internalAction({
         });
 
         messageId = msgResponse.messageId;
+      }
+
+      // if not new conversation, update the conversation's updatedAt timestamp
+      if (!isNewConversation) {
+        // Update the conversation's updatedAt timestamp
+        await ctx.runMutation(internal.chat.updateConversationUpdatedAt, {
+          conversationId,
+        });
       }
     } catch (error) {
       console.error({ error });
@@ -834,12 +844,20 @@ export const saveAssistantResponse = internalMutation({
       });
     }
 
-    // Update the conversation's updatedAt timestamp
+    return { messageId: newMessageId };
+  },
+});
+
+export const updateConversationUpdatedAt = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, args) => {
+    const { conversationId } = args;
+
     await ctx.db.patch(conversationId, {
       updatedAt: Date.now(),
     });
-
-    return { messageId: newMessageId };
   },
 });
 
